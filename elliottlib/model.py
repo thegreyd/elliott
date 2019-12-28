@@ -1,5 +1,7 @@
 from __future__ import unicode_literals
 
+from builtins import str as text
+
 
 class ModelException(Exception):
 
@@ -109,12 +111,12 @@ class ListModel(list):
             return master is test
 
         if isinstance(master, str):
-            master = unicode(master)  # Turn str into unicode
+            master = text(master)  # Turn str into unicode
 
         if isinstance(test, str):
-            test = unicode(test)  # Turn str into unicode
+            test = text(test)  # Turn str into unicode
 
-        for prim in [bool, int, unicode, float]:
+        for prim in [bool, int, text, float]:
             if isinstance(master, prim):
                 return master == test or str(master) == str(test)
 
@@ -198,7 +200,7 @@ class Model(dict):
     def primitive(self):
         """ Recursively turn Model into dicts. """
         d = {}
-        for k, v in self.iteritems():
+        for k, v in self.items():
             if isinstance(v, Model) or isinstance(v, ListModel):
                 v = v.primitive()
             d[k] = v

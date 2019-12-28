@@ -6,6 +6,7 @@ from __future__ import print_function
 from __future__ import unicode_literals
 
 # stdlib
+from __future__ import print_function
 from subprocess import call, check_output, CalledProcessError
 import json
 
@@ -94,7 +95,7 @@ def get_build_list(old, new):
     payload_json = json.loads(oc_output)
     changed_images = []
 
-    for k, v in payload_json["changedImages"].iteritems():
+    for k, v in payload_json["changedImages"].items():
         if k == "machine-os-content":
             continue  # no use in comparing this as it doesn't go in the advisory
         if v["to"]:
