@@ -130,6 +130,9 @@ advisory with the --add option.
     if mode == 'list' and len(id) == 0:
         raise click.BadParameter("When using mode=list, you must provide a list of bug IDs")
 
+    if mode == 'list' and into_default_advisories:
+        raise click.BadParameter("Cannot use --into-default-advisories with mode=list")
+
     if mode == 'payload' and not len(from_diff) == 2:
         raise click.BadParameter("If using mode=payload, you must provide two payloads to compare")
 
@@ -143,6 +146,14 @@ advisory with the --add option.
     bz_data = runtime.gitdata.load_data(key='bugzilla').data
     bzapi = bzutil.get_bzapi(bz_data)
 
+    # Some bugs should go to CPaaS so we should ignore them
+    m = re.match(r"rhaos-(\d+).(\d+)",
+                 runtime.branch)  # extract OpenShift version from the branch name. there should be a better way...
+    if not m:
+        raise ElliottFatalError(f"Unable to determine OpenShift version from branch name {runtime.branch}.")
+    major_version = int(m[1])
+    minor_version = int(m[2])
+
     if default_advisory_type is not None:
         advisory = find_default_advisory(runtime, default_advisory_type)
 
@@ -154,45 +165,16 @@ advisory with the --add option.
         bugs = bzutil.search_for_bugs(bz_data, status, filter_out_security_bugs=not(cve_trackers), verbose=runtime.debug)
     elif mode == 'list':
         bugs = [bzapi.getbug(i) for i in cli_opts.id_convert(id)]
+        mode_list(advisory=advisory, bugs=bugs, flags=flag, report=report, noop=noop)
+        return
     elif mode == 'diff':
         click.echo(runtime.working_dir)
         bug_id_strings = openshiftclient.get_bug_list(runtime.working_dir, from_diff[0], from_diff[1])
         bugs = [bzapi.getbug(i) for i in bug_id_strings]
 
-    # Some bugs should go to CPaaS so we should ignore them
-    m = re.match(r"rhaos-(\d+).(\d+)", runtime.branch)  # extract OpenShift version from the branch name. there should be a better way...
-    if not m:
-        raise ElliottFatalError(f"Unable to determine OpenShift version from branch name {runtime.branch}.")
-    major_version = int(m[1])
-    minor_version = int(m[2])
-
-    def _filter_bugs(bugs):  # returns a list of bugs that should be processed
-        r = []
-        ignored_repos = set()  # GitHub repos that should be ignored
-        if major_version == 4 and minor_version == 5:
-            # per https://issues.redhat.com/browse/ART-997: these repos should have their release-4.5 branches ignored by ART:
-            ignored_repos = {
-                "https://github.com/openshift/aws-ebs-csi-driver",
-                "https://github.com/openshift/aws-ebs-csi-driver-operator",
-                "https://github.com/openshift/cloud-provider-openstack",
-                "https://github.com/openshift/csi-driver-nfs",
-                "https://github.com/openshift/csi-driver-manila-operator"
-            }
-        for bug in bugs:
-            external_links = [ext["type"]["full_url"].replace("%id%", ext["ext_bz_bug_id"]) for ext in bug.external_bugs]  # https://github.com/python-bugzilla/python-bugzilla/blob/7aa70edcfea9b524cd8ac51a891b6395ca40dc87/bugzilla/_cli.py#L750
-            public_links = [runtime.get_public_upstream(url)[0] for url in external_links]  # translate openshift-priv org to openshift org when comparing to filter (i.e. prow may link to a PR on the private org).
-            # if a bug has 1 or more public_links, we should ignore the bug if ALL of the public_links are ANY of `ignored_repos`
-            if public_links and all(map(lambda url: any(map(lambda repo: url != repo and url.startswith(repo), ignored_repos)), public_links)):
-                continue
-            r.append(bug)
-        return r
-
-    if len(id) == 0:  # unless --id is given, we should ignore bugs that don't belong to ART. e.g. some bugs should go to CPaaS
-        filtered_bugs = _filter_bugs(bugs)
-        green_prefix(f"Found {len(filtered_bugs)} bugs ({len(bugs) - len(filtered_bugs)} ignored): ")
-        bugs = filtered_bugs
-    else:
-        green_prefix(f"Found {len(bugs)} bugs: ")
+    filtered_bugs = filter_bugs(bugs, major_version, minor_version, runtime)
+    green_prefix(f"Found {len(filtered_bugs)} bugs ({len(bugs) - len(filtered_bugs)} ignored): ")
+    bugs = filtered_bugs
     click.echo(", ".join(sorted(str(b.bug_id) for b in bugs)))
 
     if mode == 'qe':
@@ -200,24 +182,10 @@ advisory with the --add option.
             bzutil.set_state(bug, 'ON_QA', noop=noop)
 
     if len(flag) > 0:
-        for bug in bugs:
-            for f in flag:
-                if noop:
-                    click.echo(f'Would have updated bug {bug.id} by setting flag {f}')
-                    continue
-                bug.updateflags({f: "+"})
+        add_flags(bugs=bugs, flags=flag, noop=noop)
 
     if report:
-        green_print("{:<8s} {:<25s} {:<12s} {:<7s} {:<10s} {:60s}".format("ID", "COMPONENT", "STATUS", "SCORE", "AGE", "SUMMARY"))
-        for bug in bugs:
-            created_date = datetime.datetime.strptime(str(bug.creation_time), '%Y%m%dT%H:%M:%S')
-            days_ago = (datetime.datetime.today() - created_date).days
-            click.echo("{:<8d} {:<25s} {:<12s} {:<7s} {:<3d} days   {:60s} ".format(bug.id,
-                                                                                    bug.component,
-                                                                                    bug.status,
-                                                                                    bug.cf_pm_score if hasattr(bug, "cf_pm_score") else '?',
-                                                                                    days_ago,
-                                                                                    bug.summary[:60]))
+        print_report(bugs)
 
     if advisory and not default_advisory_type:  # `--add ADVISORY_NUMBER` should respect the user's wish and attach all available bugs to whatever advisory is specified.
         errata.add_bugs_with_retry(advisory, bugs, noop=noop)
@@ -288,3 +256,63 @@ advisory with the --add option.
             if bugs:
                 green_prefix(f'{impetus} advisory: ')
                 errata.add_bugs_with_retry(runtime.group_config.advisories[impetus], bugs, noop=noop)
+
+
+# returns a list of bugs that should be processed
+def filter_bugs(bugs, major_version, minor_version, runtime):
+    r = []
+    ignored_repos = set()  # GitHub repos that should be ignored
+    if major_version == 4 and minor_version == 5:
+        # per https://issues.redhat.com/browse/ART-997: these repos should have their release-4.5 branches ignored by ART:
+        ignored_repos = {
+            "https://github.com/openshift/aws-ebs-csi-driver",
+            "https://github.com/openshift/aws-ebs-csi-driver-operator",
+            "https://github.com/openshift/cloud-provider-openstack",
+            "https://github.com/openshift/csi-driver-nfs",
+            "https://github.com/openshift/csi-driver-manila-operator"
+        }
+    for bug in bugs:
+        external_links = [ext["type"]["full_url"].replace("%id%", ext["ext_bz_bug_id"]) for ext in bug.external_bugs]  # https://github.com/python-bugzilla/python-bugzilla/blob/7aa70edcfea9b524cd8ac51a891b6395ca40dc87/bugzilla/_cli.py#L750
+        public_links = [runtime.get_public_upstream(url)[0] for url in external_links]  # translate openshift-priv org to openshift org when comparing to filter (i.e. prow may link to a PR on the private org).
+        # if a bug has 1 or more public_links, we should ignore the bug if ALL of the public_links are ANY of `ignored_repos`
+        if public_links and all(map(lambda url: any(map(lambda repo: url != repo and url.startswith(repo), ignored_repos)), public_links)):
+            continue
+        r.append(bug)
+    return r
+
+
+def add_flags(bugs, flags, noop):
+    for bug in bugs:
+        for f in flags:
+            if noop:
+                click.echo(f'Would have updated bug {bug.id} by setting flag {f}')
+                continue
+            bug.updateflags({f: "+"})
+
+
+def print_report(bugs):
+    green_print(
+        "{:<8s} {:<25s} {:<12s} {:<7s} {:<10s} {:60s}".format("ID", "COMPONENT", "STATUS", "SCORE", "AGE", "SUMMARY"))
+    for bug in bugs:
+        created_date = datetime.datetime.strptime(str(bug.creation_time), '%Y%m%dT%H:%M:%S')
+        days_ago = (datetime.datetime.today() - created_date).days
+        click.echo("{:<8d} {:<25s} {:<12s} {:<7s} {:<3d} days   {:60s} ".format(bug.id,
+                                                                                bug.component,
+                                                                                bug.status,
+                                                                                bug.cf_pm_score if hasattr(bug,
+                                                                                                           "cf_pm_score") else '?',
+                                                                                days_ago,
+                                                                                bug.summary[:60]))
+
+
+def mode_list(advisory, bugs, report, flags, noop):
+    green_prefix(f"Found {len(bugs)} bugs: ")
+    click.echo(", ".join(sorted(str(b.bug_id) for b in bugs)))
+    if report:
+        print_report(bugs)
+
+    if flags:
+        add_flags(bugs, flags)
+
+    errata.add_bugs_with_retry(advisory, bugs, noop=noop)
+    return
