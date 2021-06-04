@@ -1,11 +1,10 @@
-from elliottlib import brew, constants, errata, Runtime
+from elliottlib import brew, constants, errata
 from elliottlib.cli.common import cli
 from elliottlib.exceptions import BrewBuildException
 from elliottlib.util import get_golang_version_from_root_log
 
 import click
 import koji
-pass_runtime = click.make_pass_decorator(Runtime)
 
 
 def get_rpm_golang_versions(advisory_id: str):
@@ -47,19 +46,38 @@ def get_container_golang_versions(advisory_id: str):
             print('{}:\t{}'.format(name, golang_version))
 
 
-@cli.command("get-golang-versions", short_help="Get version of Go used for builds attached to an advisory")
-@click.argument('advisory', type=int)
-@pass_runtime
-def get_golang_versions_cli(runtime, advisory):
+@cli.command("get-golang-versions", short_help="Get version of Go for advisory builds or RHCOS packages")
+@click.option('--advisory', '-a', 'advisory_id',
+              help="The advisory ID to fetch builds from")
+@click.option('--rhcos', '-r', 'ocp_pullspec',
+              help='Show version of Go for package builds of RHCOS in the given payload pullspec')
+@click.option('--rhcos-latest', '-l', 'latest',
+              is_flag=True,
+              help='Show version of Go for package builds of RHCOS for latest OCP release. Group must be given')
+@click.pass_obj
+def get_golang_versions_cli(runtime, advisory_id, ocp_pullspec, latest):
     """
     Prints the Go version used to build a component to stdout.
 
     Usage:
+
 \b
-    $ elliott --group openshift-3.7 get-golang-versions ID
+    $ elliott --group openshift-4.7 get-golang-versions -a ID
+
+\b  
+    $ elliott --group openshift-4.7 get-golang-versions -r quay.io/openshift-release-dev/ocp-release:4.6.31-x86_64
 """
-    content_type = errata.get_erratum_content_type(advisory)
-    if content_type == 'docker':
-        get_container_golang_versions(advisory)
-    else:
-        get_rpm_golang_versions(advisory)
+    count_options = sum(map(bool, [advisory_id, ocp_pullspec, latest]))
+    if count_options > 1:
+        raise click.BadParameter("Use only one of --advisory, --rhcos, or --rhcos-latest")
+    
+    if ocp_pullspec:
+        print(ocp_pullspec)
+    elif latest:
+        runtime.initialize()
+    elif advisory_id:
+        content_type = errata.get_erratum_content_type(advisory_id)
+        if content_type == 'docker':
+            get_container_golang_versions(advisory_id)
+        else:
+            get_rpm_golang_versions(advisory_id)
