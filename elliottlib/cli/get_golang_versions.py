@@ -1,10 +1,9 @@
-from elliottlib import brew, constants, errata
+from elliottlib import brew, errata, rhcos
 from elliottlib.cli.common import cli
 from elliottlib.exceptions import BrewBuildException
-from elliottlib.util import get_golang_version_from_root_log
+from elliottlib.util import get_golang_version_from_root_log, red_print
 
 import click
-import koji
 
 
 def get_rpm_golang_versions(advisory_id: str):
@@ -46,6 +45,36 @@ def get_container_golang_versions(advisory_id: str):
             print('{}:\t{}'.format(name, golang_version))
 
 
+def _latest_rhcos_source(self, arch, private):
+    stream_name = f"{arch}{'-priv' if private else ''}"
+    self.runtime.logger.info(f"Getting latest RHCOS source for {stream_name}...")
+    try:
+        version = self.runtime.get_minor_version()
+        build_id, pullspec = rhcos.latest_machine_os_content(version, arch, private)
+        if not pullspec:
+            raise Exception(f"No RHCOS found for {version}")
+
+        commitmeta = rhcos.rhcos_build_meta(build_id, version, arch, private, meta_type="commitmeta")
+        rpm_list = commitmeta.get("rpmostree.rpmdb.pkglist")
+        if not rpm_list:
+            raise Exception(f"no pkglist in {commitmeta}")
+
+    except Exception as ex:
+        problem = f"{stream_name}: {ex}"
+        red_print(f"error finding RHCOS {problem}")
+        return None
+
+    archive = dict(
+        build_id=f"({arch}){build_id}",
+        rpms=[dict(name=r[0], epoch=r[1], nvr=f"{r[0]}-{r[2]}-{r[3]}") for r in rpm_list],
+    )
+
+    return dict(
+        archive=archive,
+        image_src=pullspec,
+    )
+
+
 @cli.command("get-golang-versions", short_help="Get version of Go for advisory builds or RHCOS packages")
 @click.option('--advisory', '-a', 'advisory_id',
               help="The advisory ID to fetch builds from")
@@ -64,13 +93,13 @@ def get_golang_versions_cli(runtime, advisory_id, ocp_pullspec, latest):
 \b
     $ elliott --group openshift-4.7 get-golang-versions -a ID
 
-\b  
+\b
     $ elliott --group openshift-4.7 get-golang-versions -r quay.io/openshift-release-dev/ocp-release:4.6.31-x86_64
 """
     count_options = sum(map(bool, [advisory_id, ocp_pullspec, latest]))
     if count_options > 1:
         raise click.BadParameter("Use only one of --advisory, --rhcos, or --rhcos-latest")
-    
+
     if ocp_pullspec:
         print(ocp_pullspec)
     elif latest:
