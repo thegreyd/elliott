@@ -27,8 +27,10 @@ def get_rpm_golang_from_nvrs(nvrs):
             continue
         nvr_s = '{}-{}-{}'.format(*nvr)
         print(f'{nvr_s} {golang_version}')
-    print(f'Could not find Go version for {go_fail} nvrs')
-    print(f'Could not Brew build log for {brew_fail} nvrs')
+    if go_fail:
+        print(f'Could not find Go version in Brew build log for {go_fail} nvrs')
+    if brew_fail:
+        print(f'Could not get Brew build log for {brew_fail} nvrs')
 
 def get_rpm_golang_versions(advisory_id: str):
     advisory_nvrs = errata.get_all_advisory_nvrs(advisory_id)
@@ -69,12 +71,12 @@ def get_container_golang_versions(advisory_id: str):
 @click.option('--rhcos-ocp', '-o', 'latest_ocp',
               is_flag=True,
               help='Show version of Go for package builds of RHCOS in latest public OCP release for given group')
-@click.option('--package', '-p', 'package',
-              help='Show version of Go for only this package')
+@click.option('--packages', '-p', 'packages',
+              help='Show version of Go for only these packages. Comma separated')
 @click.option('--arch', 'arch',
               help='Specify architecture. Only to be used with -l. If not specified x86_64 is assumed')
 @click.pass_obj
-def get_golang_versions_cli(runtime, advisory_id, ocp_pullspec, latest, latest_ocp, package, arch):
+def get_golang_versions_cli(runtime, advisory_id, ocp_pullspec, latest, latest_ocp, packages, arch):
     """
     Prints the Go version used to build a component to stdout.
 
@@ -125,6 +127,8 @@ def get_golang_versions_cli(runtime, advisory_id, ocp_pullspec, latest, latest_o
         else:
             print(f'Looking up last ocp release for {version} {arch}')
             release = cincinnati.get_latest_stable_ocp(version, arch)
+            if not release:
+                return
             print(f'OCP release: {release}')
             ocp_pullspec = f'quay.io/openshift-release-dev/ocp-release:{release}-{arch}'
     
@@ -135,7 +139,7 @@ def get_golang_versions_cli(runtime, advisory_id, ocp_pullspec, latest, latest_o
     
     if build_id:
         nvrs = rhcos.get_rpm_nvrs(build_id, version, arch)
-        click.echo(f"Found {len(nvrs)} nvrs in build {build_id}")
-        if package:
-            nvrs = [p for p in nvrs if p[0] == package]
+        if packages:
+            packages = [p.strip() for p in packages.split(',')]
+            nvrs = [p for p in nvrs if p[0] in packages]
         get_rpm_golang_from_nvrs(nvrs)

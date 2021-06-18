@@ -2,7 +2,7 @@ import urllib
 import json
 import functools
 import semver
-from elliottlib import exectools
+from elliottlib import exectools, util
 
 CINCINNATI_BASE_URL = "https://api.openshift.com/api/upgrades_info/v1/graph"
 
@@ -19,12 +19,13 @@ def get_latest_stable_ocp(version, arch):
     channel = f'stable-{version}'
     url = f'{CINCINNATI_BASE_URL}?arch={arch}&channel={channel}'
     
-    print(f'Querying cincinnati for latest ocp release version {url}')
-    
     req = urllib.request.Request(url)
     req.add_header('Accept', 'application/json')
     content = exectools.urlopen_assert(req).read()
     graph = json.loads(content)
     versions = [node['version'] for node in graph['nodes']]
+    if not versions:
+        util.red_print(f"No stable release versions found")
+        return
     descending_versions = sort_semver(versions)
     return descending_versions[0]
