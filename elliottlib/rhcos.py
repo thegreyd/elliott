@@ -65,7 +65,6 @@ def _build_meta(build_id, version, arch="x86_64", private=False, meta_type="meta
     # before 4.3 the arch was not included in the path
     vtuple = tuple(int(f) for f in version.split("."))
     url += f"{meta_type}.json" if vtuple < (4, 3) else f"{arch}/{meta_type}.json"
-    print(url)
     with request.urlopen(url) as req:
         return json.loads(req.read().decode())
 
@@ -82,7 +81,6 @@ def get_build_from_payload(payload_pullspec):
 
 def get_rpm_nvrs(build_id, version, arch, private=''):
     stream_name = f"{arch}{'-priv' if private else ''}"
-    print(f'arch is {arch} version is {version} build is {build_id} stream is {stream_name}')
     try:
         commitmeta = get_build_meta(build_id, version, arch, private, meta_type="commitmeta")
         rpm_list = commitmeta.get("rpmostree.rpmdb.pkglist")

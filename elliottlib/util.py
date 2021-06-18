@@ -309,7 +309,8 @@ def get_golang_version_from_root_log(root_log):
     # $ grep -m1 -o -E '(go-toolset-1[^ ]*|golang-(bin-|))[0-9]+.[0-9]+.[0-9]+[^ ]*' ./3.11/*.log | sed 's/:.*\([0-9]\+\.[0-9]\+\.[0-9]\+.*\)/: \1/'
     # $ grep -m1 -o -E '(go-toolset-1[^ ]*|golang.*module[^ ]*).*[0-9]+.[0-9]+.[0-9]+[^ ]*' ./4.5/*.log | sed 's/\:.*\([^a-z][0-9]\+\.[0-9]\+\.[0-9]\+[^ ]*\)/:\ \1/'
     m = re.search(r'(go-toolset-1[^\s]*|golang-bin).*[0-9]+.[0-9]+.[0-9]+[^\s]*', root_log)
-    return m.group(0)
+    s = " ".join(m.group(0).split())
+    return s
 
 
 # some of our systems refer to golang's architecture nomenclature; translate between that and brew arches

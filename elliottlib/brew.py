@@ -184,7 +184,7 @@ def get_brew_build(nvr, product_version='', session=None):
 def get_nvr_root_log(name, version, release, arch='x86_64'):
     root_log_url = '{host}/vol/rhel-{rhel_version}/packages/{name}/{version}/{release}/data/logs/{arch}/root.log'.format(
         host=constants.BREW_DOWNLOAD_URL,
-        rhel_version=release[-1],
+        rhel_version=(7 if 'el7' in release else 8),
         name=name,
         version=version,
         release=release,

@@ -11,18 +11,24 @@ import json
 
 
 def get_rpm_golang_from_nvrs(nvrs):
+    go_fail, brew_fail = 0, 0
     for nvr in nvrs:
         try:
             root_log = brew.get_nvr_root_log(*nvr)
         except BrewBuildException as e:
-            print(e)
+            # print(e)
+            brew_fail += 1
             continue
         try:
             golang_version = get_golang_version_from_root_log(root_log)
         except AttributeError:
-            print('Could not find Go version in {}-{}-{} root.log'.format(*nvr))
+            # print('Could not find Go version in {}-{}-{} root.log'.format(*nvr))
+            go_fail += 1
             continue
-        print('{}-{}-{}:\t{}'.format(*nvr, golang_version))
+        nvr_s = '{}-{}-{}'.format(*nvr)
+        print(f'{nvr_s} {golang_version}')
+    print(f'Could not find Go version for {go_fail} nvrs')
+    print(f'Could not Brew build log for {brew_fail} nvrs')
 
 def get_rpm_golang_versions(advisory_id: str):
     advisory_nvrs = errata.get_all_advisory_nvrs(advisory_id)
