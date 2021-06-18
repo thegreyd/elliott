@@ -1,16 +1,17 @@
-from elliottlib import brew, errata, rhcos
+from elliottlib import brew, errata, rhcos, cincinnati
 from elliottlib.cli.common import cli
 from elliottlib.exceptions import BrewBuildException
 from elliottlib.util import get_golang_version_from_root_log, red_print
 
 import click
+import functools
+import semver
+import urllib
+import json
 
 
-def get_rpm_golang_versions(advisory_id: str):
-    all_advisory_nvrs = errata.get_all_advisory_nvrs(advisory_id)
-
-    click.echo("Found {} builds".format(len(all_advisory_nvrs)))
-    for nvr in all_advisory_nvrs:
+def get_rpm_golang_from_nvrs(nvrs):
+    for nvr in nvrs:
         try:
             root_log = brew.get_nvr_root_log(*nvr)
         except BrewBuildException as e:
@@ -22,6 +23,12 @@ def get_rpm_golang_versions(advisory_id: str):
             print('Could not find Go version in {}-{}-{} root.log'.format(*nvr))
             continue
         print('{}-{}-{}:\t{}'.format(*nvr, golang_version))
+
+def get_rpm_golang_versions(advisory_id: str):
+    advisory_nvrs = errata.get_all_advisory_nvrs(advisory_id)
+    click.echo(f"Found {len(advisory_nvrs)} builds in advisory {advisory_id}")
+    print(advisory_nvrs)
+    get_rpm_golang_from_nvrs(advisory_nvrs)
 
 
 def get_container_golang_versions(advisory_id: str):
@@ -45,36 +52,6 @@ def get_container_golang_versions(advisory_id: str):
             print('{}:\t{}'.format(name, golang_version))
 
 
-def _latest_rhcos_source(self, arch, private):
-    stream_name = f"{arch}{'-priv' if private else ''}"
-    self.runtime.logger.info(f"Getting latest RHCOS source for {stream_name}...")
-    try:
-        version = self.runtime.get_minor_version()
-        build_id, pullspec = rhcos.latest_machine_os_content(version, arch, private)
-        if not pullspec:
-            raise Exception(f"No RHCOS found for {version}")
-
-        commitmeta = rhcos.rhcos_build_meta(build_id, version, arch, private, meta_type="commitmeta")
-        rpm_list = commitmeta.get("rpmostree.rpmdb.pkglist")
-        if not rpm_list:
-            raise Exception(f"no pkglist in {commitmeta}")
-
-    except Exception as ex:
-        problem = f"{stream_name}: {ex}"
-        red_print(f"error finding RHCOS {problem}")
-        return None
-
-    archive = dict(
-        build_id=f"({arch}){build_id}",
-        rpms=[dict(name=r[0], epoch=r[1], nvr=f"{r[0]}-{r[2]}-{r[3]}") for r in rpm_list],
-    )
-
-    return dict(
-        archive=archive,
-        image_src=pullspec,
-    )
-
-
 @cli.command("get-golang-versions", short_help="Get version of Go for advisory builds or RHCOS packages")
 @click.option('--advisory', '-a', 'advisory_id',
               help="The advisory ID to fetch builds from")
@@ -82,31 +59,77 @@ def _latest_rhcos_source(self, arch, private):
               help='Show version of Go for package builds of RHCOS in the given payload pullspec')
 @click.option('--rhcos-latest', '-l', 'latest',
               is_flag=True,
-              help='Show version of Go for package builds of RHCOS for latest OCP release. Group must be given')
+              help='Show version of Go for package builds of latest RHCOS builds')
+@click.option('--rhcos-ocp', '-o', 'latest_ocp',
+              is_flag=True,
+              help='Show version of Go for package builds of RHCOS in latest public OCP release for given group')
+@click.option('--package', '-p', 'package',
+              help='Show version of Go for only this package')
+@click.option('--arch', 'arch',
+              help='Specify architecture. Only to be used with -l. If not specified x86_64 is assumed')
 @click.pass_obj
-def get_golang_versions_cli(runtime, advisory_id, ocp_pullspec, latest):
+def get_golang_versions_cli(runtime, advisory_id, ocp_pullspec, latest, latest_ocp, package, arch):
     """
     Prints the Go version used to build a component to stdout.
 
     Usage:
 
 \b
-    $ elliott --group openshift-4.7 get-golang-versions -a ID
+    $ elliott get-golang-versions -a ID
 
 \b
-    $ elliott --group openshift-4.7 get-golang-versions -r quay.io/openshift-release-dev/ocp-release:4.6.31-x86_64
-"""
-    count_options = sum(map(bool, [advisory_id, ocp_pullspec, latest]))
-    if count_options > 1:
-        raise click.BadParameter("Use only one of --advisory, --rhcos, or --rhcos-latest")
+    $ elliott --group openshift-4.6 get-golang-versions -r quay.io/openshift-release-dev/ocp-release:4.6.31-x86_64
 
-    if ocp_pullspec:
-        print(ocp_pullspec)
-    elif latest:
-        runtime.initialize()
-    elif advisory_id:
+\b
+    $ elliott --group openshift-4.8 -l
+
+\b 
+    $ elliott --group openshift-4.8 -l --arch ppc64le
+
+\b 
+    $ elliott --group openshift-4.8 -o
+"""
+    count_options = sum(map(bool, [advisory_id, ocp_pullspec, latest, latest_ocp]))
+    if count_options > 1:
+        raise click.BadParameter("Use only one of --advisory, --rhcos, --rhcos-latest, --rhcos-ocp")
+
+    if arch and not (latest or latest_ocp):
+        raise click.BadParameter("--arch can only be used with --rhcos-latest, --rhcos-ocp")
+
+    if advisory_id:
         content_type = errata.get_erratum_content_type(advisory_id)
         if content_type == 'docker':
             get_container_golang_versions(advisory_id)
         else:
             get_rpm_golang_versions(advisory_id)
+    
+    runtime.initialize()
+    major = runtime.group_config.vars.MAJOR
+    minor = runtime.group_config.vars.MINOR
+    version = f'{major}.{minor}'
+
+    build_id = ''
+    arch = 'x86_64' if not arch else arch
+    
+    if latest or latest_ocp:
+        if latest:
+            print(f'Looking up latest rhcos build id for {version} {arch}')
+            build_id = rhcos.latest_build_id(version, arch)
+            print(f'Build id found: {build_id}')
+        else:
+            print(f'Looking up last ocp release for {version} {arch}')
+            release = cincinnati.get_latest_stable_ocp(version, arch)
+            print(f'OCP release: {release}')
+            ocp_pullspec = f'quay.io/openshift-release-dev/ocp-release:{release}-{arch}'
+    
+    if ocp_pullspec:
+        print(f"Looking up rhcos build id for {ocp_pullspec}")
+        build_id, arch = rhcos.get_build_from_payload(ocp_pullspec)
+        print(f'Build id found: {build_id}')
+    
+    if build_id:
+        nvrs = rhcos.get_rpm_nvrs(build_id, version, arch)
+        click.echo(f"Found {len(nvrs)} nvrs in build {build_id}")
+        if package:
+            nvrs = [p for p in nvrs if p[0] == package]
+        get_rpm_golang_from_nvrs(nvrs)
