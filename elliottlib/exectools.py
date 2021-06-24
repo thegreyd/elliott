@@ -153,6 +153,7 @@ async def cmd_gather_async(cmd, text_mode=True):
             "Process {}: exited with: {}".format(cmd_info, rc))
         return rc, out, err
 
+
 def urlopen_assert(url_or_req, httpcode=200, retries=3):
     """
     Retries a URL pull several times before throwing a RetryException

@@ -2,6 +2,7 @@ import click
 from elliottlib.cli.common import cli
 from elliottlib import rhcos, cincinnati, util
 
+
 @cli.command("rhcos", short_help="Show details about RHCOS packages")
 @click.option('--from-spec', '-s', 'pullspec',
               help='Show details of RHCOS in the given payload pullspec')
@@ -29,12 +30,12 @@ def rhcos_cli(runtime, pullspec, latest, latest_ocp, packages, arch, go):
     $ elliott --group openshift-4.6 rhcos -s quay.io/openshift-release-dev/ocp-release:4.6.31-x86_64
 
 \b
-    $ elliott --group openshift-4.8 rhcos -l -p runc 
+    $ elliott --group openshift-4.8 rhcos -l -p runc
 
-\b 
+\b
     $ elliott --group openshift-4.8 rhcos -l --arch ppc64le
 
-\b 
+\b
     $ elliott --group openshift-4.8 rhcos -o -p skopeo,podman
 """
     count_options = sum(map(bool, [pullspec, latest, latest_ocp]))
@@ -51,7 +52,7 @@ def rhcos_cli(runtime, pullspec, latest, latest_ocp, packages, arch, go):
 
     build_id = ''
     arch = 'x86_64' if not arch else arch
-    
+
     if latest or latest_ocp:
         if latest:
             print(f'Looking up latest rhcos build id for {version} {arch}')
@@ -64,12 +65,12 @@ def rhcos_cli(runtime, pullspec, latest, latest_ocp, packages, arch, go):
                 return
             print(f'OCP release found: {release}')
             pullspec = f'quay.io/openshift-release-dev/ocp-release:{release}-{arch}'
-    
+
     if pullspec:
         print(f"Looking up rhcos build id for {pullspec}")
         build_id, arch = rhcos.get_build_from_payload(pullspec)
         print(f'Build id found: {build_id}')
-    
+
     if build_id:
         nvrs = rhcos.get_rpm_nvrs(build_id, version, arch)
         if packages:
@@ -80,5 +81,3 @@ def rhcos_cli(runtime, pullspec, latest, latest_ocp, packages, arch, go):
             return
         for nvr in nvrs:
             print('{}-{}-{}'.format(*nvr))
-        
-        

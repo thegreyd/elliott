@@ -66,7 +66,7 @@ def get_golang_versions_cli(runtime, advisory_id, nvrs):
         else:
             get_rpm_golang_versions(advisory_id)
         return
-    
+
     if nvrs:
         nvrs = [n.strip().split('-') for n in nvrs.split(',')]
         for n in nvrs:

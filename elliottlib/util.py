@@ -320,7 +320,7 @@ def get_rpm_golang_from_nvrs(nvrs):
     for nvr in nvrs:
         try:
             root_log = brew.get_nvr_root_log(*nvr)
-        except BrewBuildException as e:
+        except BrewBuildException:
             # print(e)
             brew_fail += 1
             continue

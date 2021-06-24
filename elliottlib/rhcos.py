@@ -83,6 +83,7 @@ def get_build_from_payload(payload_pullspec):
     arch = image_info["config"]["config"]["Labels"]["architecture"]
     return (build_id, arch)
 
+
 def get_rpm_nvrs(build_id, version, arch, private=''):
     stream_name = f"{arch}{'-priv' if private else ''}"
     try:
