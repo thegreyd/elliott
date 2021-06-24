@@ -4,6 +4,8 @@ import datetime
 from multiprocessing import cpu_count
 from multiprocessing.dummy import Pool as ThreadPool
 import re
+from elliottlib import brew
+from elliottlib.exceptions import BrewBuildException
 
 from errata_tool import Erratum
 from kerberos import GSSError
@@ -311,6 +313,29 @@ def get_golang_version_from_root_log(root_log):
     m = re.search(r'(go-toolset-1[^\s]*|golang-bin).*[0-9]+.[0-9]+.[0-9]+[^\s]*', root_log)
     s = " ".join(m.group(0).split())
     return s
+
+
+def get_rpm_golang_from_nvrs(nvrs):
+    go_fail, brew_fail = 0, 0
+    for nvr in nvrs:
+        try:
+            root_log = brew.get_nvr_root_log(*nvr)
+        except BrewBuildException as e:
+            # print(e)
+            brew_fail += 1
+            continue
+        try:
+            golang_version = get_golang_version_from_root_log(root_log)
+        except AttributeError:
+            # print('Could not find Go version in {}-{}-{} root.log'.format(*nvr))
+            go_fail += 1
+            continue
+        nvr_s = '{}-{}-{}'.format(*nvr)
+        print(f'{nvr_s} {golang_version}')
+    if go_fail:
+        print(f'Could not find Go version in Brew build log for {go_fail} nvrs')
+    if brew_fail:
+        print(f'Could not get Brew build log for {brew_fail} nvrs')
 
 
 # some of our systems refer to golang's architecture nomenclature; translate between that and brew arches
