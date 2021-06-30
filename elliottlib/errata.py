@@ -414,7 +414,7 @@ def parse_exception_error_message(e):
     return [int(b.split('#')[1]) for b in re.findall(r'Bug #[0-9]*', str(e))]
 
 
-def add_bugs_with_retry(advisory, bugs, noop=False, batch_size=100):
+def add_bugs_with_retry(advisory, bugs, bzapi, noop=False, batch_size=100):
     """
     adding specified bugs into advisory, retry 2 times: first time
     parse the exception message to get failed bug id list, remove from original
@@ -438,6 +438,22 @@ def add_bugs_with_retry(advisory, bugs, noop=False, batch_size=100):
     new_bugs = set(bug.id for bug in bugs) - set(existing_bugs)
     print(f'Bugs already attached: {len(existing_bugs)}')
     print(f'New bugs ({len(new_bugs)}) : {sorted(new_bugs)}')
+
+    full_bugs = [bzapi.getbug(i) for i in new_bugs]
+    ignore = set()
+    placeholder_string = "Placeholder bug for OCP"
+    errata_string = 'Red Hat Errata Tool'
+    for bug in full_bugs:
+        if placeholder_string in bug.summary:
+            ignore.add(bug.id)
+        if bug.external_bugs:
+            for ext in bug.external_bugs:
+                if errata_string in ext['type']['description']:
+                    ignore.add(bug.id)
+                    continue
+    if ignore:
+        print(f'Ignoring placeholder bugs and bugs already attached to advisories: {ignore}')
+        new_bugs = new_bugs - ignore
 
     if not new_bugs:
         print('No new bugs to attach. Exiting.')

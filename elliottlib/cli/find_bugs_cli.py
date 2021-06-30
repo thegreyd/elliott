@@ -242,7 +242,7 @@ advisory with the --add option.
 
     elif mode == 'list':
         bugs = [bzapi.getbug(i) for i in cli_opts.id_convert(id)]
-        mode_list(advisory=advisory, bugs=bugs, flags=flag, report=report, noop=noop)
+        mode_list(advisory=advisory, bugs=bugs, bzapi=bzapi, flags=flag, report=report, noop=noop)
         return
     elif mode == 'diff':
         click.echo(runtime.working_dir)
@@ -265,7 +265,7 @@ advisory with the --add option.
         print_report(bugs)
 
     if advisory and not default_advisory_type:  # `--add ADVISORY_NUMBER` should respect the user's wish and attach all available bugs to whatever advisory is specified.
-        errata.add_bugs_with_retry(advisory, bugs, noop=noop)
+        errata.add_bugs_with_retry(advisory, bugs, bzapi, noop=noop)
         return
 
     # If --use-default-advisory or --into-default-advisories is given, we need to determine which bugs should be swept into which advisory.
@@ -321,12 +321,12 @@ advisory with the --add option.
         impetus_bugs["image"] = set(bugs) - impetus_bugs["extras"] - rpm_bugs.keys()
 
     if default_advisory_type and impetus_bugs.get(default_advisory_type):
-        errata.add_bugs_with_retry(advisory, impetus_bugs[default_advisory_type], noop=noop)
+        errata.add_bugs_with_retry(advisory, impetus_bugs[default_advisory_type], bzapi, noop=noop)
     elif into_default_advisories:
         for impetus, bugs in impetus_bugs.items():
             if bugs:
                 green_prefix(f'{impetus} advisory: ')
-                errata.add_bugs_with_retry(runtime.group_config.advisories[impetus], bugs, noop=noop)
+                errata.add_bugs_with_retry(runtime.group_config.advisories[impetus], bugs, bzapi, noop=noop)
 
 
 type_bug_list = List[bug_module.Bug]
@@ -401,7 +401,7 @@ def print_report(bugs: type_bug_list) -> None:
                                                                                 bug.summary[:60]))
 
 
-def mode_list(advisory: str, bugs: type_bug_list, report: bool, flags: List[str], noop: bool) -> None:
+def mode_list(advisory: str, bugs: type_bug_list, bzapi, report: bool, flags: List[str], noop: bool) -> None:
     green_prefix(f"Found {len(bugs)} bugs: ")
     click.echo(", ".join(sorted(str(b.bug_id) for b in bugs)))
     if report:
@@ -411,5 +411,5 @@ def mode_list(advisory: str, bugs: type_bug_list, report: bool, flags: List[str]
         add_flags(bugs, flags, noop)
 
     if advisory:
-        errata.add_bugs_with_retry(advisory, bugs, noop=noop)
+        errata.add_bugs_with_retry(advisory, bugs, bzapi, noop=noop)
     return
