@@ -60,7 +60,7 @@ def rhcos_cli(runtime, pullspec, latest, latest_ocp, packages, arch, go):
             print(f'Build id found: {build_id}')
         else:
             print(f'Looking up last ocp release for {version} {arch}')
-            release = cincinnati.get_latest_stable_ocp(version, arch)
+            release = cincinnati.get_latest_candidate_ocp(version, arch)
             if not release:
                 return
             print(f'OCP release found: {release}')

@@ -11,14 +11,14 @@ def sort_semver(versions):
     return sorted(versions, key=functools.cmp_to_key(semver.compare), reverse=True)
 
 
-def get_latest_stable_ocp(version, arch):
+def get_latest_candidate_ocp(version, arch):
     """
     Queries Cincinnati and returns latest release version for the given X.Y version
     Code referenced from Doozer #release_calc_previous
     """
 
     arch = 'amd64' if arch == 'x86_64' else arch
-    channel = f'stable-{version}'
+    channel = f'candidate-{version}'
     url = f'{CINCINNATI_BASE_URL}?arch={arch}&channel={channel}'
 
     req = urllib.request.Request(url)
