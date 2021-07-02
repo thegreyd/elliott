@@ -77,7 +77,7 @@ def rhcos_cli(runtime, pullspec, latest, latest_ocp, packages, arch, go):
             packages = [p.strip() for p in packages.split(',')]
             nvrs = [p for p in nvrs if p[0] in packages]
         if go:
-            util.get_rpm_golang_from_nvrs(nvrs)
+            util.get_golang_from_nvrs(nvrs, rpm=True)
             return
         for nvr in nvrs:
             print('{}-{}-{}'.format(*nvr))
