@@ -317,7 +317,9 @@ def get_golang_version_from_root_log(root_log):
 
 def get_golang_from_nvrs(nvrs, rpm=False):
     if not rpm:
-        all_build_objs = brew.get_build_objects(nvrs)
+        all_build_objs = brew.get_build_objects([
+            '{}-{}-{}'.format(*n) for n in nvrs
+        ])
         for build in all_build_objs:
             golang_version = None
             name = build.get('name')

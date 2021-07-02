@@ -9,7 +9,6 @@ import click
               help="The advisory ID to fetch builds from")
 @click.option('--nvrs', '-n',
               help="Brew nvrs to show go version for. Comma separated")
-@click.pass_obj
 def get_golang_versions_cli(advisory_id, nvrs):
     """
     Prints the Go version used to build a component to stdout.
