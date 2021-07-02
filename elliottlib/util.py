@@ -305,57 +305,71 @@ def minor_version_tuple(bz_target):
     return (int(major), int(minor))
 
 
-def get_golang_version_from_root_log(root_log):
+def get_golang_version_from_build_log(log):
     # TODO add a test for this
     # Based on below greps:
     # $ grep -m1 -o -E '(go-toolset-1[^ ]*|golang-(bin-|))[0-9]+.[0-9]+.[0-9]+[^ ]*' ./3.11/*.log | sed 's/:.*\([0-9]\+\.[0-9]\+\.[0-9]\+.*\)/: \1/'
     # $ grep -m1 -o -E '(go-toolset-1[^ ]*|golang.*module[^ ]*).*[0-9]+.[0-9]+.[0-9]+[^ ]*' ./4.5/*.log | sed 's/\:.*\([^a-z][0-9]\+\.[0-9]\+\.[0-9]\+[^ ]*\)/:\ \1/'
-    m = re.search(r'(go-toolset-1[^\s]*|golang-bin).*[0-9]+.[0-9]+.[0-9]+[^\s]*', root_log)
+    m = re.search(r'(go-toolset-1[^\s]*|golang-bin).*[0-9]+.[0-9]+.[0-9]+[^\s]*', log)
     s = " ".join(m.group(0).split())
     return s
 
 
-def get_golang_from_nvrs(nvrs, rpm=False):
-    if not rpm:
-        all_build_objs = brew.get_build_objects([
-            '{}-{}-{}'.format(*n) for n in nvrs
-        ])
-        for build in all_build_objs:
-            golang_version = None
-            name = build.get('name')
-            try:
-                parents = build['extra']['image']['parent_image_builds']
-            except KeyError:
-                print('Could not get parent image info for {}'.format(name))
-                continue
+def get_golang_container_nvrs(nvrs):
+    go_fail, brew_fail = 0, 0
+    all_build_objs = brew.get_build_objects([
+        '{}-{}-{}'.format(*n) for n in nvrs
+    ])
+    for build in all_build_objs:
+        golang_version = None
+        name = build.get('name')
+        try:
+            parents = build['extra']['image']['parent_image_builds']
+        except KeyError:
+            brew_fail += 1
+            continue
 
-            for p, pinfo in parents.items():
-                if 'builder' in p:
-                    golang_version = pinfo.get('nvr')
+        for p, pinfo in parents.items():
+            if 'builder' in p:
+                golang_version = pinfo.get('nvr')
 
-            if golang_version is not None:
-                print('{}:\t{}'.format(name, golang_version))
-    if rpm:
-        go_fail, brew_fail = 0, 0
-        for nvr in nvrs:
+        if golang_version:
+            print(f'{name} {golang_version}')
+        elif 'golang-builder' in name:
             try:
-                root_log = brew.get_nvr_root_log(*nvr)
+                for n in nvrs:
+                    if name in n:
+                        build_log = brew.get_nvr_arch_log(*n)
             except BrewBuildException:
-                # print(e)
                 brew_fail += 1
                 continue
             try:
-                golang_version = get_golang_version_from_root_log(root_log)
+                golang_version = get_golang_version_from_build_log(build_log)
             except AttributeError:
-                # print('Could not find Go version in {}-{}-{} root.log'.format(*nvr))
                 go_fail += 1
                 continue
-            nvr_s = '{}-{}-{}'.format(*nvr)
-            print(f'{nvr_s} {golang_version}')
-        if go_fail:
-            print(f'Could not find Go version in Brew build log for {go_fail} nvrs')
-        if brew_fail:
-            print(f'Could not get Brew build log for {brew_fail} nvrs')
+            print(f'{name} {golang_version}')
+        else:
+            go_fail += 1
+    return brew_fail, go_fail
+
+
+def get_golang_rpm_nvrs(nvrs):
+    go_fail, brew_fail = 0, 0
+    for nvr in nvrs:
+        try:
+            root_log = brew.get_nvr_root_log(*nvr)
+        except BrewBuildException:
+            brew_fail += 1
+            continue
+        try:
+            golang_version = get_golang_version_from_build_log(root_log)
+        except AttributeError:
+            go_fail += 1
+            continue
+        nvr_s = '{}-{}-{}'.format(*nvr)
+        print(f'{nvr_s} {golang_version}')
+    return brew_fail, go_fail
 
 
 # some of our systems refer to golang's architecture nomenclature; translate between that and brew arches

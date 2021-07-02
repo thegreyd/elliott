@@ -35,9 +35,9 @@ def get_golang_versions_cli(advisory_id, nvrs):
 
         content_type = errata.get_erratum_content_type(advisory_id)
         if content_type == 'docker':
-            util.get_golang_from_nvrs(advisory_nvrs)
+            util.get_golang_container_nvrs(advisory_nvrs)
         else:
-            util.get_golang_from_nvrs(advisory_nvrs, rpm=True)
+            util.get_golang_rpm_nvrs(advisory_nvrs)
         return
 
     if nvrs:
@@ -50,8 +50,18 @@ def get_golang_versions_cli(advisory_id, nvrs):
                 container_nvrs.append(nvr_tuple)
             else:
                 rpm_nvrs.append(nvr_tuple)
+
+        brew_fail, go_fail = 0, 0
         if rpm_nvrs:
-            util.get_golang_from_nvrs(rpm_nvrs, rpm=True)
+            brew_fail, go_fail = util.get_golang_rpm_nvrs(rpm_nvrs)
+
         if container_nvrs:
-            util.get_golang_from_nvrs(container_nvrs)
+            c_brew_fail, c_go_fail = util.get_golang_container_nvrs(container_nvrs)
+            brew_fail += c_brew_fail
+            go_fail += c_go_fail
+
+        if go_fail:
+            print(f'Could not find Go version for {go_fail} nvrs')
+        if brew_fail:
+            print(f'Could not Brew info for {brew_fail} nvrs')
         return
