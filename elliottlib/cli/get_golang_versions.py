@@ -4,7 +4,7 @@ from kobo.rpmlib import parse_nvr
 import click
 
 
-@cli.command("get-golang-versions", short_help="Get version of Go for advisory builds")
+@cli.command("go", short_help="Get version of Go for advisory builds")
 @click.option('--advisory', '-a', 'advisory_id',
               help="The advisory ID to fetch builds from")
 @click.option('--nvrs', '-n',
@@ -16,12 +16,12 @@ def get_golang_versions_cli(advisory_id, nvrs):
     Usage:
 
 \b
-    $ elliott get-golang-versions -a 76557
+    $ elliott go -a 76557
 
     List brew builds attached to the advisory with their go version
 
 \b
-    $ elliott get-golang-versions -n podman-3.0.1-6.el8,podman-1.9.3-3.rhaos4.6.el8
+    $ elliott go -n podman-3.0.1-6.el8,podman-1.9.3-3.rhaos4.6.el8
 
     List given brew builds with their go version
 """
