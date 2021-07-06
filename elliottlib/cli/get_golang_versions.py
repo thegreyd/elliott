@@ -31,7 +31,6 @@ def get_golang_versions_cli(advisory_id, nvrs):
     if advisory_id:
         advisory_nvrs = errata.get_all_advisory_nvrs(advisory_id)
         click.echo(f"Found {len(advisory_nvrs)} builds in advisory {advisory_id}")
-        print(advisory_nvrs)
 
         content_type = errata.get_erratum_content_type(advisory_id)
         if content_type == 'docker':
