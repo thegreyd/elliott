@@ -357,6 +357,11 @@ def get_golang_container_nvrs(nvrs):
 def get_golang_rpm_nvrs(nvrs):
     go_fail, brew_fail = 0, 0
     for nvr in nvrs:
+        # what we build in brew as openshift
+        # is called openshift-hyperkube in rhcos
+        if nvr[0] == 'openshift-hyperkube':
+            n = 'openshift'
+            nvr = (n, nvr[1], nvr[2])
         try:
             root_log = brew.get_nvr_root_log(*nvr)
         except BrewBuildException:
